@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Checkout - Eezy Spaza</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif; /* Changed for better default */
+      padding: 16px;
+      background-color: #f4f4f4;
+      margin: 0;
+    }
+    .navbar { /* Renamed from nav for clarity */
+      background: #0066cc;
+      color: white;
+      padding: 10px 16px; /* Added horizontal padding */
+      display: flex;
+      justify-content: space-between;
+      align-items: center; /* Vertically align items */
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .navbar-title {
+        font-weight: bold;
+        font-size: 1.2em;
+    }
+    .navbar button {
+      background: none;
+      color: white;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+      margin-left: 10px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      transition: background-color 0.2s ease;
+    }
+    .navbar button:hover {
+        background-color: #0052a3;
+    }
+    .container { /* Added a container for content */
+        max-width: 600px;
+        margin: 20px auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h2 {
+      margin-top: 0; /* Adjusted since it's inside container */
+      color: #333;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .product-summary-item { /* Renamed from product for clarity */
+      background: #f9f9f9; /* Lighter background for items */
+      margin-bottom: 10px;
+      padding: 12px;
+      border-radius: 5px;
+      border: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+    }
+    .product-summary-item strong {
+        color: #555;
+    }
+    .form-group {
+        margin-bottom: 15px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #333;
+    }
+    .form-group input[type="number"] {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box; /* Important for width */
+        background-color: #e9ecef; /* Indicate readonly */
+    }
+    #pay-btn {
+      background-color: #28a745;
+      color: white;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1em;
+      width: 100%; /* Make button full width */
+      transition: background-color 0.2s ease;
+    }
+    #pay-btn:hover {
+      background-color: #218838;
+    }
+    #pay-btn:disabled {
+        background-color: #aaa;
+        cursor: not-allowed;
+    }
+    #yoco-card {
+        border: 1px solid #ccc;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+    .error-message {
+        color: red;
+        font-size: 0.9em;
+        margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-title">EEZY Spaza</div>
+    <div>
+      <button onclick="window.location.href='index.html'">Home</button>
+      <!-- You might want a link back to the trolley page too -->
+      <!-- <button onclick="window.location.href='trolley.html'">Back to Trolley</button> -->
+    </div>
+  </nav>
+
+  <div class="container">
+    <h2>Secure Checkout</h2>
+
+    <div id="cart-items-summary">
+        <!-- Cart items will be injected here by JS -->
+    </div>
+
+    <div class="form-group">
+        <label for="total-amount-display">Total Amount:</label>
+        <input id="total-amount-display" type="text" readonly style="font-weight: bold; border: none; background: none;" />
+    </div>
+
+    <!-- This input is for the Yoco amount, hidden from user but value set by JS -->
+    <input id="amount-in-cents" type="hidden" />
+
+
+    <p style="font-weight:bold; margin-bottom:10px;">Enter Card Details:</p>
+    <div id="yoco-card-container">
+        <!-- Yoco Inline SDK will mount here -->
+    </div>
+    <div id="yoco-card-error" class="error-message"></div> <!-- For Yoco field errors -->
+
+    <button id="pay-now-button">Pay Now</button> <!-- Changed ID for clarity -->
+  </div>
+
+  <script src="https://js.yoco.com/sdk/v1/yoco-sdk-web.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const cartItemsSummaryContainer = document.getElementById('cart-items-summary');
+        const totalAmountDisplayEl = document.getElementById('total-amount-display');
+        const amountInCentsInput = document.getElementById('amount-in-cents'); // Hidden input for Yoco
+        const payNowButton = document.getElementById('pay-now-button');
+        const yocoCardContainer = document.getElementById('yoco-card-container');
+        const yocoCardError = document.getElementById('yoco-card-error');
+
+        // --- CONFIGURATION ---
+        // !!!! REPLACE WITH YOUR ACTUAL YOCO TEST PUBLIC KEY !!!!
+        const YOCO_PUBLIC_KEY = 'pk_test_YOUR_TEST_KEY_HERE'; // e.g., pk_test_xxxxxxxxx
+        // !!!! REPLACE WITH YOUR ACTUAL BACKEND PAYMENT ENDPOINT !!!!
+        const PAYMENT_BACKEND_URL = 'https://paytest-backend.onrender.com/pay'; // Or your actual backend URL
+
+        let totalAmountInCents = 0;
+        let yocoCard; // To store the Yoco card instance
+
+        function displayCartItems() {
+            console.log("Loading cart from localStorage...");
+            const cart = JSON.parse(localStorage.getItem('eezy_cart')) || [];
+            console.log("Cart data:", cart);
+
+            cartItemsSummaryContainer.innerHTML = ''; // Clear previous items
+
+            if (cart.length === 0) {
+                cartItemsSummaryContainer.innerHTML = '<p>Your cart is empty. Please add items to your cart first.</p>';
+                payNowButton.disabled = true;
+                totalAmountDisplayEl.value = 'R0.00';
+                amountInCentsInput.value = '0';
+                return;
+            }
+
+            cart.forEach(item => {
+                if (typeof item.price !== 'number' || typeof item.name !== 'string') {
+                    console.warn("Skipping invalid item in cart:", item);
+                    return;
+                }
+                const itemPriceInCents = parseInt(item.price); // Ensure it's an integer
+                totalAmountInCents += itemPriceInCents;
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'product-summary-item';
+                itemDiv.innerHTML = `
+                    <span><strong>${item.name}</strong></span>
+                    <span>R${(itemPriceInCents / 100).toFixed(2)}</span>
+                `;
+                cartItemsSummaryContainer.appendChild(itemDiv);
+            });
+
+            totalAmountDisplayEl.value = `R${(totalAmountInCents / 100).toFixed(2)}`;
+            amountInCentsInput.value = totalAmountInCents;
+            console.log("Total amount in cents:", totalAmountInCents);
+
+            if (totalAmountInCents < 100) { // Yoco minimum is usually R1.00 (100 cents)
+                alert("The total amount is too low for payment processing (min R1.00).");
+                payNowButton.disabled = true;
+            } else {
+                payNowButton.disabled = false;
+            }
+        }
+
+        function initializeYocoSDK() {
+            if (!YOCO_PUBLIC_KEY || YOCO_PUBLIC_KEY === 'pk_test_YOUR_TEST_KEY_HERE') {
+                console.error("YOCO_PUBLIC_KEY is not configured. Please set your Yoco test public key.");
+                alert("Payment system is not configured correctly (Error: YPK_MISSING). Please contact support.");
+                payNowButton.disabled = true;
+                return;
+            }
+
+            try {
+                console.log("Initializing Yoco SDK with publicKey:", YOCO_PUBLIC_KEY);
+                const yoco = new YocoSDK({ publicKey: YOCO_PUBLIC_KEY });
+
+                yocoCard = yoco.inline({
+                    layout: 'field', // 'basic' or 'field' or 'stacked'
+                    amountInCents: totalAmountInCents, // Recommended to pass amount
+                    currency: 'ZAR',
+                    // container: yocoCardContainer // Mount manually for better control
+                });
+
+                yocoCard.mount('#yoco-card-container'); // Mount it to the div
+                console.log("Yoco inline form mounted.");
+
+                // Optional: Listen for Yoco SDK events (e.g., input validation)
+                yocoCard.on('card-field-error', (error) => {
+                    yocoCardError.textContent = error ? error.message : '';
+                });
+                 yocoCard.on('card-field-valid', (field) => {
+                    // console.log(`${field.fieldType} is valid`);
+                    // Potentially clear a specific field's error if needed
+                    if (yocoCardError.textContent) yocoCardError.textContent = ''; // Clear general error if any field becomes valid
+                });
+
+
+            } catch (error) {
+                console.error("Error initializing Yoco SDK:", error);
+                alert("Could not initialize the payment form. Please try again later or contact support. (Error: YSDK_INIT_FAIL)");
+                payNowButton.disabled = true;
+            }
+        }
+
+        payNowButton.addEventListener('click', async () => {
+            if (!yocoCard) {
+                alert("Payment form is not ready. Please wait or refresh the page.");
+                return;
+            }
+            yocoCardError.textContent = ''; // Clear previous errors
+            payNowButton.disabled = true;
+            payNowButton.textContent = 'Processing...';
+
+            const currentAmountInCents = parseInt(amountInCentsInput.value);
+            if (!currentAmountInCents || currentAmountInCents < 100) { // Double check amount
+                alert("Invalid amount for payment (min 100 cents / R1.00).");
+                payNowButton.disabled = false;
+                payNowButton.textContent = 'Pay Now';
+                return;
+            }
+
+            console.log("Attempting to create Yoco token...");
+            try {
+                const result = await yocoCard.createToken();
+                console.log("Yoco tokenization result:", result);
+
+                if (result.error) {
+                    alert("Card validation error: " + result.error.message);
+                    yocoCardError.textContent = result.error.message;
+                    payNowButton.disabled = false;
+                    payNowButton.textContent = 'Pay Now';
+                    return;
+                }
+
+                const token = result.id;
+                console.log("Yoco token received:", token);
+                console.log("Sending token and amount to backend:", PAYMENT_BACKEND_URL);
+
+                const response = await fetch(PAYMENT_BACKEND_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: token, amount: currentAmountInCents }) // Ensure names match backend
+                });
+
+                console.log("Backend response status:", response.status);
+                const responseData = await response.json();
+                console.log("Backend response data:", responseData);
+
+                if (responseData.success) { // Assuming backend returns { success: true, ... }
+                    alert("✅ Payment successful! Your reference: " + (responseData.reference || responseData.chargeId || 'N/A'));
+                    localStorage.removeItem('eezy_cart'); // Clear cart on success
+                    // Redirect to a thank you page
+                    // window.location.href = 'thankyou.html';
+                    cartItemsSummaryContainer.innerHTML = '<p>Payment successful! Thank you for your order.</p>';
+                    totalAmountDisplayEl.value = 'R0.00';
+
+                } else {
+                    alert("❌ Payment failed: " + (responseData.message || "Unknown error from server."));
+                }
+            } catch (err) {
+                console.error("Error during payment processing:", err);
+                alert("An unexpected error occurred during payment. Please try again or contact support. (Error: PAY_PROC_FAIL)");
+            } finally {
+                // Re-enable button only if it wasn't a successful payment redirect
+                if (! (document.getElementById('cart-items-summary').textContent.includes("Payment successful")) ){
+                    payNowButton.disabled = false;
+                    payNowButton.textContent = 'Pay Now';
+                }
+            }
+        });
+
+        // --- Initialize Page ---
+        displayCartItems();
+        if (totalAmountInCents >= 100) { // Only init Yoco if there's a valid amount
+            initializeYocoSDK();
+        } else {
+            console.log("Skipping Yoco SDK initialization due to low/zero total amount.");
+            if(yocoCardContainer) yocoCardContainer.innerHTML = "<p><em>Card form will appear once a valid total is calculated.</em></p>"
+        }
+    });
+  </script>
+</body>
+</html>
