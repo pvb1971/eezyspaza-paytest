@@ -1,34 +1,30 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const fetch = require('node-fetch');
-require('dotenv').config(); // If you use a .env file (optional)
+require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ✅ Insert your actual Yoco secret key here
-const secretKey = 'sk_live_fdfd3a282z4oq6q142a4041841f9'; // <-- INSERT sk_test_... or sk_live_...
+// ✅ Replace with your Yoco TEST secret key (for development)
+const secretKey = 'sk_test_15d3ce0d2z4oq6q9bee41e9aee4d'; // <- insert test key here
 
-// ✅ Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// ✅ Root route (for health check)
+// Health check route
 app.get('/', (req, res) => {
   res.send("✅ Eezy Spaza Payment Backend is running.");
 });
 
-// ✅ POST /pay
+// Payment route
 app.post('/pay', async (req, res) => {
   const { amount, token } = req.body;
 
-  // Basic validation
   if (!amount || !token) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing amount or token"
-    });
+    return res.status(400).json({ success: false, message: "Missing amount or token" });
   }
 
   try {
@@ -49,27 +45,17 @@ app.post('/pay', async (req, res) => {
 
     if (response.ok && data.id) {
       console.log("✅ Payment success:", data);
-      res.json({
-        success: true,
-        reference: data.id
-      });
+      res.json({ success: true, reference: data.id });
     } else {
       console.error("❌ Payment failed:", data);
-      res.status(400).json({
-        success: false,
-        message: data.message || "Payment request was not successful"
-      });
+      res.status(400).json({ success: false, message: data.message || "Payment request failed" });
     }
   } catch (error) {
     console.error("❌ Server error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Unexpected server error"
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// ✅ Start server
 app.listen(port, () => {
   console.log(`🚀 Eezy Spaza backend running at http://localhost:${port}`);
 });
